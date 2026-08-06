@@ -1,0 +1,21 @@
+{
+  "name": "prismloop",
+  "version": "0.2.0",
+  "description": "Prismloop - Agent 驱动的云手机 APP 自动测试与 harness 闭环系统(棱镜折射偏差,闭环驱动迭代)",
+  "main": "src/main.py",
+  "scripts": {
+    "test": "python -m pytest tests/",
+    "list": "python -m src.main list",
+    "run:smoke": "python -m src.main run --task smoke",
+    "run:dev-loop": "python -m src.main run --task dev-loop",
+    "run:functional": "python -m src.main run --task functional",
+    "run:pressure": "python -m src.main run --task pressure"
+  },
+  "dependencies": {
+    "pyyaml": ">=6.0",
+    "requests": ">=2.28",
+    "volcengine-python-sdk": ">=1.0",
+    "volcenginesdkacep": ">=1.0",
+    "Pillow": ">=9.0"
+  }
+}
