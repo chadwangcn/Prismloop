@@ -266,6 +266,15 @@ class TestInstanceManagement:
         assert method == "list_pod"
         assert req._kwargs["max_results"] == 10
 
+    def test_list_pod_accepts_current_sdk_row_field(self):
+        first = FakePod()
+        first.pod_id = "pod-row-1"
+        self.fake_api.responses["list_pod"] = FakeResponse(row=[first])
+
+        result = self.client.list_pod()
+
+        assert [item.pod_id for item in result] == ["pod-row-1"]
+
     def test_power_on_passes_list(self):
         self.fake_api.responses["power_on_pod"] = FakeResponse()
         self.client.power_on([DEFAULT_POD_K1])
@@ -381,7 +390,7 @@ class TestADBManagement:
             pod=FakePod(adb="", adb_status=0)
         )
         with pytest.raises(ACEPError, match="detail_pod.adb 为空"):
-            self.client.pod_adb_enable(DEFAULT_POD_K1)
+            self.client.pod_adb_enable(DEFAULT_POD_K1, wait_seconds=0)
 
     def test_pod_adb_disable_clears_cache(self):
         self.fake_api.responses["pod_adb"] = FakeResponse()
@@ -465,6 +474,15 @@ class TestCommandExecution:
         _, req = self.fake_api.calls[-1]
         assert req._kwargs["pod_id_list"] == [DEFAULT_POD_K1]
         assert req._kwargs["command"] == "ls"
+
+    def test_run_sync_command_normalizes_sdk_status_list_as_details(self):
+        pod_result = {"pod_id": DEFAULT_POD_K1, "success": True, "detail": "10\\n"}
+        self.fake_api.responses["run_sync_command"] = FakeResponse(status=[pod_result])
+
+        result = self.client.run_sync_command([DEFAULT_POD_K1], "getprop ro.build.version.release")
+
+        assert result["status"] == [pod_result]
+        assert result["details"] == [pod_result]
 
     def test_run_shell_wraps_single_pod(self):
         self.fake_api.responses["run_sync_command"] = FakeResponse(status="ok")

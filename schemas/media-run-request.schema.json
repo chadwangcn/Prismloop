@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prismloop.local/schemas/media-run-request.schema.json",
+  "title": "Prismloop Media I/O Run Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "idempotency_key", "environment_ref", "artifact_store_ref", "inputs", "sequence"],
+  "properties": {
+    "schema_version": {"const": "prismloop.media-run-request.v1"},
+    "request_id": {"type": "string", "minLength": 8, "maxLength": 128},
+    "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 256},
+    "environment_ref": {"type": "string", "minLength": 1},
+    "artifact_store_ref": {"type": "string", "minLength": 1},
+    "timeout_seconds": {"type": "integer", "minimum": 5, "maximum": 14400},
+    "inputs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/input"},
+      "uniqueItems": true
+    },
+    "camera_streams": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/cameraStream"},
+      "uniqueItems": true
+    },
+    "sequence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/step"}
+    },
+    "recognizers": {
+      "type": "array",
+      "items": {"enum": ["image.features", "ocr", "audio.signal", "audio.asr"]},
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_ref", "sha256", "media_type"],
+      "properties": {
+        "artifact_ref": {"type": "string", "pattern": "^artifact://"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "media_type": {"type": "string", "minLength": 3}
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_id", "kind", "artifact"],
+      "properties": {
+        "input_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
+        "kind": {"enum": ["camera.image", "camera.video", "microphone.pcm", "microphone.audio"]},
+        "artifact": {"$ref": "#/$defs/artifact"},
+        "audio_format": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sample_rate_hz", "channels", "sample_format"],
+          "properties": {
+            "sample_rate_hz": {"type": "integer", "minimum": 8000, "maximum": 192000},
+            "channels": {"enum": [1, 2]},
+            "sample_format": {"enum": ["s16le", "f32le"]}
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"enum": ["microphone.pcm", "microphone.audio"]}}},
+          "then": {"required": ["audio_format"]}
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step_id", "action"],
+      "properties": {
+        "step_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
+        "action": {"enum": ["input.stage", "input.start", "input.stop", "camera.stream.open", "camera.stream.switch", "camera.stream.close", "capture.screenshot", "capture.video.start", "capture.video.stop", "capture.audio.start", "capture.audio.stop", "wait"]},
+        "input_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
+        "stream_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
+        "duration_ms": {"type": "integer", "minimum": 1, "maximum": 3600000}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"action": {"enum": ["input.stage", "input.start", "input.stop"]}}},
+          "then": {"required": ["input_id"]}
+        },
+        {
+          "if": {"properties": {"action": {"const": "camera.stream.switch"}}},
+          "then": {"required": ["stream_id", "input_id"]}
+        },
+        {
+          "if": {"properties": {"action": {"enum": ["camera.stream.open", "camera.stream.close"]}}},
+          "then": {"required": ["stream_id"]}
+        },
+        {
+          "if": {"properties": {"action": {"const": "wait"}}},
+          "then": {"required": ["duration_ms"]}
+        }
+      ]
+    },
+    "cameraStream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stream_id", "initial_input_id", "profile", "max_interframe_gap_ms"],
+      "properties": {
+        "stream_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
+        "initial_input_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
+        "profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height", "fps", "pixel_format"],
+          "properties": {
+            "width": {"type": "integer", "minimum": 16, "maximum": 7680},
+            "height": {"type": "integer", "minimum": 16, "maximum": 7680},
+            "fps": {"type": "integer", "minimum": 1, "maximum": 120},
+            "pixel_format": {"enum": ["yuv420p", "nv12", "rgba"]}
+          }
+        },
+        "max_interframe_gap_ms": {"type": "integer", "minimum": 1, "maximum": 5000},
+        "end_of_source_policy": {"enum": ["loop", "hold_last_frame", "fallback"]}
+      }
+    }
+  }
+}

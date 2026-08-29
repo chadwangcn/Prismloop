@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prismloop.local/schemas/prismloop-project.schema.json",
+  "title": "Prismloop Project Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "display_name",
+    "status",
+    "source",
+    "design",
+    "android",
+    "execution",
+    "test_plans",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": { "const": "prismloop.project.v1" },
+    "project_id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+    "display_name": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["draft", "active", "retired"] },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["github"],
+      "properties": {
+        "github": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "default_ref"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 3 },
+            "default_ref": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["figma"],
+      "properties": {
+        "figma": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "file_key", "version_policy", "contract_path"],
+          "properties": {
+            "provider": { "const": "figma" },
+            "file_key": { "type": "string", "pattern": "^[A-Za-z0-9_-]{6,128}$" },
+            "file_url": { "type": "string", "format": "uri" },
+            "version_policy": { "enum": ["pinned", "resolve_at_run"] },
+            "version": { "type": "string", "minLength": 1 },
+            "contract_path": { "type": "string", "minLength": 1 },
+            "pages": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "frames": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        }
+      }
+    },
+    "android": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_name", "workspace_subdir", "build_command", "apk_glob", "min_sdk", "target_sdk"],
+      "properties": {
+        "package_name": { "type": "string", "minLength": 3 },
+        "workspace_subdir": { "type": "string", "minLength": 1 },
+        "build_command": { "type": "string", "minLength": 1 },
+        "apk_glob": { "type": "string", "minLength": 1 },
+        "min_sdk": { "type": "integer", "minimum": 21 },
+        "target_sdk": { "type": "integer", "minimum": 21 }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment_ref", "device_profiles", "pools"],
+      "properties": {
+        "environment_ref": { "type": "string", "minLength": 1 },
+        "device_profiles": { "type": "object", "minProperties": 1 },
+        "pools": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dev", "qa"],
+          "properties": {
+            "dev": { "type": "string", "minLength": 1 },
+            "qa": { "type": "string", "minLength": 1 },
+            "regression": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "test_plans": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalog", "developer_smoke", "qa_acceptance"],
+      "properties": {
+        "catalog": { "type": "object", "minProperties": 1 },
+        "developer_smoke": { "type": "string", "minLength": 1 },
+        "qa_acceptance": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["store_ref", "prefix_template", "url_ttl_seconds"],
+      "properties": {
+        "store_ref": { "type": "string", "minLength": 1 },
+        "prefix_template": { "type": "string", "minLength": 1 },
+        "url_ttl_seconds": { "type": "integer", "minimum": 60, "maximum": 86400 }
+      }
+    }
+  }
+}

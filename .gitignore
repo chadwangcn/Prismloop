@@ -46,6 +46,9 @@ coverage.xml
 reports/
 **/reports/
 tmp/
+data/
+media-probe/build-artifacts/
+gateway-web/node_modules/
 *.log
 
 # 凭证与环境配置(不入库)

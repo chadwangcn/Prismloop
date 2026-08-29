@@ -1,0 +1,14 @@
+{
+  "name": "prismloop-vephone-client-gateway",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/server.mjs",
+    "start": "node src/server.mjs"
+  },
+  "dependencies": {
+    "@volcengine/vephone": "1.70.0",
+    "playwright": "1.55.0"
+  }
+}

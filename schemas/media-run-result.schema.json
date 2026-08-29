@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prismloop.local/schemas/media-run-result.schema.json",
+  "title": "Prismloop Media I/O Run Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "request_id", "status", "input_snapshot", "capability_report", "outputs", "evidence_index"],
+  "properties": {
+    "schema_version": {"const": "prismloop.media-run-result.v1"},
+    "run_id": {"type": "string", "minLength": 8},
+    "request_id": {"type": "string", "minLength": 8},
+    "status": {"enum": ["queued", "running", "completed", "capability_unavailable", "error", "canceled"]},
+    "input_snapshot": {"$ref": "#/$defs/artifact"},
+    "capability_report": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "state"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "state": {"enum": ["verified", "unverified", "blocked", "unavailable"]},
+          "reason": {"type": "string"},
+          "probe_evidence": {"$ref": "#/$defs/artifact"}
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["output_id", "kind", "step_id", "artifact"],
+        "properties": {
+          "output_id": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["screen.image", "screen.video", "speaker.audio", "execution.log"]},
+          "step_id": {"type": "string", "minLength": 1},
+          "artifact": {"$ref": "#/$defs/artifact"}
+        }
+      }
+    },
+    "stream_receipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+          "required": ["stream_id", "profile", "emitted_frame_count", "max_observed_interframe_gap_ms", "source_switch_count", "source_session_restarts", "discontinuity_count", "artifact"],
+        "properties": {
+          "stream_id": {"type": "string", "minLength": 1},
+          "profile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["width", "height", "fps", "pixel_format"],
+            "properties": {
+              "width": {"type": "integer"},
+              "height": {"type": "integer"},
+              "fps": {"type": "integer"},
+              "pixel_format": {"type": "string"}
+            }
+          },
+          "emitted_frame_count": {"type": "integer", "minimum": 0},
+          "max_observed_interframe_gap_ms": {"type": "number", "minimum": 0},
+          "source_switch_count": {"type": "integer", "minimum": 0},
+          "source_session_restarts": {"type": "integer", "minimum": 0},
+          "discontinuity_count": {"type": "integer", "minimum": 0},
+          "active_source_id": {"type": ["string", "null"]},
+          "source_history": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "artifact": {"$ref": "#/$defs/artifact"}
+        }
+      }
+    },
+    "recognition": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["recognition_id", "kind", "input_artifact_id", "artifact"],
+        "properties": {
+          "recognition_id": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["image.features", "ocr", "audio.signal", "audio.asr"]},
+          "input_artifact_id": {"type": "string", "minLength": 1},
+          "artifact": {"$ref": "#/$defs/artifact"}
+        }
+      }
+    },
+    "evidence_index": {"$ref": "#/$defs/artifact"},
+    "error": {"type": "string"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "artifact_ref", "sha256", "media_type"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "artifact_ref": {"type": "string", "pattern": "^artifact://"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "media_type": {"type": "string", "minLength": 3}
+      }
+    }
+  }
+}

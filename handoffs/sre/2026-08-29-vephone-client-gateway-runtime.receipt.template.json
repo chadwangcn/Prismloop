@@ -1,0 +1,13 @@
+{
+  "work_package_id": "SRE-PRISMLOOP-MEDIA-001",
+  "status": "ready_for_poc",
+  "sts_assume_role_preflight": "ready",
+  "temporary_token_complete": true,
+  "node_dependency_check": "passed",
+  "chromium_launch": "verified",
+  "gateway_bind_scope": "loopback_only",
+  "credential_storage": "managed_runtime_or_keychain",
+  "policy_scope_reviewed": true,
+  "secret_or_infrastructure_identifiers_in_receipt": false,
+  "completed_at": "<UTC RFC3339>"
+}

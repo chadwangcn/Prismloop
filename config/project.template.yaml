@@ -1,0 +1,60 @@
+schema_version: prismloop.project.v1
+project_id: sample-android-app
+display_name: Sample Android App
+status: draft
+
+source:
+  github:
+    repository: your-org/your-android-repo
+    default_ref: main
+
+design:
+  figma:
+    provider: figma
+    file_key: ReplaceWithFigmaFileKey
+    file_url: https://www.figma.com/design/ReplaceWithFigmaFileKey/Sample-App
+    version_policy: resolve_at_run
+    contract_path: FIGMA_TO_APK_SPEC.md
+    pages:
+      - 01_AppScreens
+      - 02_Components
+      - 04_Tokens
+      - 05_Copy
+      - 06_Flow
+    frames: []
+
+android:
+  package_name: com.example.app
+  workspace_subdir: .
+  build_command: ./gradlew :app:assembleQa
+  apk_glob: app/build/outputs/apk/qa/*.apk
+  min_sdk: 26
+  target_sdk: 35
+
+execution:
+  environment_ref: cloud-phone/default
+  device_profiles:
+    android-standard:
+      platform: android
+      android_api: 30
+      resolution: 720x1280
+      dpi: 320
+      orientation: portrait
+      # 设备的实际能力由 Harness 服务的 capability registry 在运行时报告。
+      # Scenario 只声明它需要的能力，项目配置不得把未验证能力写成可用。
+  pools:
+    dev: android-standard
+    qa: android-standard
+    regression: android-standard
+
+test_plans:
+  catalog:
+    developer-smoke-v1: prismloop/developer-smoke.yaml
+    qa-acceptance-v1: prismloop/qa-acceptance.yaml
+  developer_smoke: developer-smoke-v1
+  qa_acceptance: qa-acceptance-v1
+
+artifacts:
+  store_ref: tos/prismloop-default
+  prefix_template: android/{project_id}/{git_commit}/{figma_version}
+  url_ttl_seconds: 3600

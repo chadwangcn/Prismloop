@@ -264,9 +264,12 @@ class ACEPClient:
         return PodStatus.from_pod(pod_id, pod_obj)
 
     def list_pod(self, max_results: int = 50) -> List[PodStatus]:
-        """列出所有 Pod"""
+        """列出所有 Pod，兼容 SDK 的 ``row`` / ``pods`` 列表字段。"""
         resp = self._req("ListPodRequest", max_results=max_results)
-        pods = getattr(resp, "pods", []) or []
+        pods = getattr(resp, "row", None)
+        if pods is None:
+            pods = getattr(resp, "pods", [])
+        pods = pods or []
         return [PodStatus.from_pod(getattr(p, "pod_id", ""), p) for p in pods]
 
     def power_on(self, pod_ids: List[str]) -> Any:
@@ -363,20 +366,30 @@ class ACEPClient:
             pod_id_list=pod_ids,
         )
 
-    def pod_adb_enable(self, pod_id: str) -> ADBAddress:
+    def pod_adb_enable(self, pod_id: str, wait_seconds: int = 30) -> ADBAddress:
         """开启 Pod ADB,返回连接地址
 
         PodAdb API 仅切换开关,不返回地址。实际地址从 detail_pod 的 adb 字段获取,
         格式 ip:port,本地执行 `adb connect <address>` 即可。
+
+        注意:PodAdb 调用后地址异步生效,需要轮询 detail_pod 等待 adb 字段出现。
         """
         # 1. 调用 PodAdb(enable=True) 开启功能
         self._req("PodAdbRequest", pod_id=pod_id, enable=True)
 
-        # 2. 查询 detail_pod 获取 ADB 地址
+        # 2. 轮询查询 detail_pod 获取 ADB 地址(异步延迟)
         status = self.detail_pod(pod_id)
         if not status.adb:
+            logger.info("ADB 地址异步未就绪,轮询等待(最多 %ds)...", wait_seconds)
+            for i in range((max(0, wait_seconds) + 1) // 2):
+                time.sleep(2)
+                status = self.detail_pod(pod_id)
+                logger.debug("  [%ds] adb=%r, adb_status=%s", (i + 1) * 2, status.adb, status.adb_status)
+                if status.adb:
+                    break
+        if not status.adb:
             raise ACEPError(
-                f"pod_adb(enable=True) 已调用,但 detail_pod.adb 为空。"
+                f"pod_adb(enable=True) 已调用,但轮询 {wait_seconds}s 后 detail_pod.adb 为空。"
                 f"adb_status={status.adb_status}"
             )
         adb_addr = ADBAddress(
@@ -433,10 +446,19 @@ class ACEPClient:
             pod_id_list=pod_ids,
             command=command,
         )
+        status = getattr(resp, "status", "")
+        details = getattr(resp, "details", None)
+        # The ACEP SDK currently returns per-Pod command results in ``status``
+        # (a list), rather than in ``details``.  Preserve the scalar status
+        # used by older SDK responses and normalize the per-Pod results for
+        # callers through ``details``.
+        if details is None:
+            details = status if isinstance(status, list) else []
+
         return {
-            "status": getattr(resp, "status", ""),
+            "status": status,
             "command": getattr(resp, "command", command),
-            "details": getattr(resp, "details", []),
+            "details": details,
         }
 
     def run_shell(self, pod_id: str, command: str) -> Dict[str, Any]:
