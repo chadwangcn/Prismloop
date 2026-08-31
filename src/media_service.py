@@ -136,6 +136,7 @@ class MediaRunService:
         audio_adapter: Optional[ExternalAudioAdapter] = None,
         audio_source_resolver: Optional[AudioSourceResolver] = None,
         capture_adapter: Optional[MediaCaptureAdapter] = None,
+        wait_sleep: Optional[Callable[[float], None]] = None,
     ) -> None:
         self._artifact_store = artifact_store
         self._video_adapter = video_adapter
@@ -143,6 +144,9 @@ class MediaRunService:
         self._audio_adapter = audio_adapter
         self._audio_source_resolver = audio_source_resolver
         self._capture_adapter = capture_adapter
+        # None → 确定性零等待(本地 demo/单测);真实设备 bootstrap 传真实睡眠,
+        # 让 wait 期间注入效果在设备上真实发生(架构文档 11 §5.1)。
+        self._wait_sleep = wait_sleep
         self._capabilities = {key: dict(value) for key, value in capabilities.items()}
         self._runs: Dict[str, Dict[str, Any]] = {}
         self._idempotency: Dict[str, str] = {}
@@ -311,6 +315,8 @@ class MediaRunService:
                         audio_router, microphone_open, staged_audio_sources, duration_ms, clock_ns
                     )
                     clock_ns += duration_ms * 1_000_000
+                    if self._wait_sleep is not None:
+                        self._wait_sleep(duration_ms / 1_000)
                 elif action == "input.start":
                     input_id = step["input_id"]
                     if input_specs[input_id]["kind"].startswith("microphone."):

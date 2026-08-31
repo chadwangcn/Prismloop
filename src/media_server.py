@@ -9,14 +9,25 @@ test transport from accidentally being selected for a cloud environment.
 from __future__ import annotations
 
 import argparse
-from typing import Any, Mapping
+import time
+from typing import Any, Callable, Mapping
 
 from .media_http import create_server
 from .media_async import AsyncMediaRunService
 from .media_config import MediaServiceSettings
 from .media_io import IterableVideoSource, RecordingExternalVideoAdapter, StreamProfile
-from .media_service import Capability, MemoryArtifactStore
+from .media_service import ArtifactStore, Capability, MemoryArtifactStore
+from .media_sources import ArtifactAudioSourceResolver, ArtifactVideoSourceResolver
 from .media_state import MediaRunStore
+from .pod_injector import (
+    POD_FIXTURE_ROOT,
+    PodFixtureAudioResolver,
+    PodFixtureVideoResolver,
+    PodInjectorAudioAdapter,
+    PodInjectorClient,
+    PodInjectorVideoAdapter,
+    PushFixture,
+)
 
 
 class DeterministicDemoVideoResolver:
@@ -39,6 +50,62 @@ def build_demo_service(state_db_path: str = ":memory:") -> AsyncMediaRunService:
                 "camera.video.inject": Capability("camera.video.inject", "verified", "local recording adapter"),
                 "camera.continuous_stream_switch": Capability(
                     "camera.continuous_stream_switch", "verified", "local recording adapter"
+                ),
+            }
+        },
+    )
+
+
+def build_pod_injector_service(
+    *,
+    environment_ref: str,
+    artifact_store: ArtifactStore,
+    push_fixture: PushFixture,
+    state_db_path: str = ":memory:",
+    injector_host: str = "127.0.0.1",
+    injector_port: int = 18080,
+    remote_root: str = POD_FIXTURE_ROOT,
+    request_timeout_seconds: float = 20.0,
+    wait_sleep: Callable[[float], None] | None = time.sleep,
+    ffmpeg_path: str = "ffmpeg",
+) -> AsyncMediaRunService:
+    """组装 Pod 裸数据注入路径的 MediaRun 服务(架构文档 11 §5.1)。
+
+    前提(由调用方保证):Pod 内 injector APP 已运行、`adb forward` 已建立,
+    ``push_fixture`` 能把本地目录放置到 Pod 文件系统。能力账本以 2026-08-31
+    PoC 实测为准。
+    """
+    client = PodInjectorClient(
+        host=injector_host, port=injector_port, timeout_seconds=request_timeout_seconds
+    )
+    return AsyncMediaRunService(
+        store=MediaRunStore(state_db_path),
+        artifact_store=artifact_store,
+        video_adapter=PodInjectorVideoAdapter(client),
+        video_source_resolver=PodFixtureVideoResolver(
+            decoder=ArtifactVideoSourceResolver(artifact_store, ffmpeg_path=ffmpeg_path),
+            client=client,
+            push_fixture=push_fixture,
+            remote_root=remote_root,
+        ),
+        audio_adapter=PodInjectorAudioAdapter(client),
+        audio_source_resolver=PodFixtureAudioResolver(
+            decoder=ArtifactAudioSourceResolver(artifact_store, ffmpeg_path=ffmpeg_path),
+            client=client,
+            push_fixture=push_fixture,
+            remote_root=remote_root,
+        ),
+        wait_sleep=wait_sleep,
+        capabilities={
+            environment_ref: {
+                "camera.video.inject": Capability(
+                    "camera.video.inject", "verified", "pod injector PoC 2026-08-31"
+                ),
+                "camera.continuous_stream_switch": Capability(
+                    "camera.continuous_stream_switch", "verified", "pod injector PoC 2026-08-31"
+                ),
+                "microphone.pcm.inject": Capability(
+                    "microphone.pcm.inject", "verified", "pod injector PoC 2026-08-31"
                 ),
             }
         },

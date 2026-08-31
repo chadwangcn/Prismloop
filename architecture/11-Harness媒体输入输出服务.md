@@ -305,6 +305,38 @@ artifact://<store-ref>/
 运行开始前，服务依据 `inputs`、`sequence` 和 `recognizers` 计算所需能力。如果环境未被实测为
 `verified`，服务返回 `capability_unavailable`，绝不伪装为成功或静默降级。
 
+### 5.1 Pod 注入编排接入约定（v2.1 首选路径的编排层落点）
+
+`MediaRunService` 编排层通过 `src/pod_injector.py` 接入 Pod 内 injector 的 HTTP 控制
+（`127.0.0.1:18080`，经 `adb forward`），对外 12 种 action 契约不变。编排动作与
+injector 调用的映射：
+
+| 编排动作 | injector HTTP 调用 | 时机 |
+|---|---|---|
+| `input.stage`（camera.video） | 无（fixture 预处理：ffmpeg 解码 → `manifest.json`+`video.bin` → adb push 到 Pod） | 解码与上传，不启动注入 |
+| `camera.stream.open` | `GET /status` 探活 | 仅确认 injector 存活，不启动注入 |
+| 首次帧消费（首个 `wait` 驱动） | `POST /camera/sequence {dir, fps}` | lazy 启动帧序列播放 |
+| `camera.stream.switch` | 下一次帧消费时 `POST /camera/sequence` | 热切换：只换 fixture 源，不 stop、不重建会话 |
+| `camera.stream.close` | `POST /camera/stop` | 停止推帧（不注销设备回调） |
+| `input.stage`（microphone.*） | 无（PCM fixture → adb push） | 同视频 |
+| `input.start` 后首次帧消费 | `POST /audio/file {path, sampleRate, channels}` | `recordByFile(TYPE_CIRCLE)` 循环注入 |
+| `input.stop` | `POST /audio/stop` | 关闭音频会话 |
+
+约定：
+
+- **帧时钟归属**：Pod 路径的帧节奏由 Pod 内 `FrameFeeder` 自驱（33ms/帧，PoC 实测），
+  编排层的逐帧 `push` 是 receipt 元数据记录，不产生逐帧 HTTP；`/camera/frame` 单帧直推
+  保留在 injector API 中但编排层不使用（未经 PoC 验证）。
+- **lazy 启动语义**：fixture 播放源在首次被消费时才 `POST /camera/sequence`；client 跟踪
+  `current_camera_dir` / `current_audio_path`，`stop` 后清空，保证 close→open 重开与
+  A→B→A 回切都能正确重新下发。
+- **wait 真实时钟**：Pod 执行环境 bootstrap 向 `MediaRunService` 传入 `wait_sleep`，
+  `wait` 动作按真实时间等待（注入效果发生在 Pod 内），本地 demo 模式保持确定性零等待。
+- **错误分类**：连接失败/超时 → `InjectorUnavailableError`（run 进入 `error`）；
+  injector 返回 `{"error":...}`（HTTP 恒为 200）→ `InjectorCommandError`。
+- **fixture 格式约束**：视频仅 `yuv420p`/`rgba`（injector `FrameFeeder` 消费格式），
+  音频为 PCM（`s16le`/`f32le`）。
+
 当前云手机 PoC 的能力账本（2026-08-31 Pod 裸数据注入 PoC 后更新）：
 
 | capability | 当前状态 | 证据 |
