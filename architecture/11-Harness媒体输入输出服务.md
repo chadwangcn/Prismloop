@@ -1,9 +1,11 @@
 # Prismloop Media I/O Harness：媒体输入输出服务
 
-> 文档版本：v2.0
-> 更新日期：2026-08-29
+> 文档版本：v2.1
+> 更新日期：2026-08-30
 > 状态：设计草案
 > 范围：模拟媒体输入、采集媒体输出、保存原始证据与可选信号识别。
+>
+> **v2.1 变更**：注入首选路径从"客户端外部源 Gateway（Web SDK）"反转为"Pod 裸数据注入（Pod 内 injector APP）"。触发条件：① 实例规格已达旗舰型（g2.8c16g.plus）；② 复读官方文档 1129851 确认 Proxy SDK 的真实部署形态是**运行在云机 Pod 内部的 Android APP**（libvdevice.so 操作本地虚拟设备节点，API 无任何网络参数）；③ 项目要求注入链路必须是纯后台服务，不依赖浏览器。Web SDK gateway 路线降为备选（保留代码与 STS broker 设计，不作为 PoC 主线）。
 
 ---
 
@@ -105,44 +107,51 @@ video-B ──preload─┘           ▲
 
 | 官方说明 | Harness adapter | 是否适合连续 fixture 切换 | 使用边界 |
 |---|---|---:|---|
-| [Pod 原始数据注入](https://www.volcengine.com/docs/6394/1129851?lang=zh) | `PodRawFrameAdapter` | 是（待 PoC） | 服务端直接生产/代理原始音视频帧时使用 |
+| [Pod 原始数据注入](https://www.volcengine.com/docs/6394/1129851?lang=zh) | `PodRawFrameAdapter` | 是（**首选，PoC 中**） | 注入器是 Pod 内 Android APP，经 libvdevice 本地设备节点写入；需要旗舰型实例 |
 | [客户端内部源注入](https://www.volcengine.com/docs/6394/1182636?lang=zh) | `ClientInternalSourceAdapter` | 否 | 客户端真实摄像头/麦克风采集，不是资产库 fixture 播放器 |
-| [客户端外部源注入](https://www.volcengine.com/docs/6394/1182637?lang=zh) | `ClientExternalFrameAdapter` | 是（首选，待 PoC） | Harness 从资产库解码后持续推送自定义帧 |
+| [客户端外部源注入](https://www.volcengine.com/docs/6394/1182637?lang=zh) | `ClientExternalFrameAdapter` | 是（备选） | Harness 从资产库解码后持续推送自定义帧；需浏览器/客户端 SDK 会话与 STS token，降为备选 |
 
-连续切换选择“客户端外部视频源”模式，而不是离线文件播放模式。服务的 provider adapter
-只在 stream open 时设置一次 `setVideoSourceType(外部源)` 并发布本地视频；随后以稳定帧率
-持续调用 `pushExternalVideoFrame`。`VideoSourceRouter` 在调用前替换帧内容，所以切换 A/B
-视频不需要再次切换视频源类型。外部源与内部采集是不同采集模式；模式之间切换有采集启停
-语义，故不能把它置于每次内容切换路径上。
+连续切换的语义在 Pod 注入路径下同样成立：`CameraProxyManager.registerCallback` 注册一次，
+帧序列由 injector APP 持续 `putVideoFrame` 写入；`camera.stream.switch` 只替换 injector 的
+当前 fixture 源（帧缓冲区来源），不注销回调、不重建设备节点会话。音频同理：`AudioProxyManager`
+按 10ms 周期 `putAudioFrame` 写 PCM，SDK 内部完成音视频自动同步。
 
-音频同理：麦克风外部源是独立的 `setAudioSourceType` + 定时
-`pushExternalAudioFrame` 会话，不能借用摄像头视频的 AAC 音轨。
+#### Pod 裸数据注入（首个可验证执行路径）
 
-#### 客户端外部源 Gateway（首个可验证执行路径）
-
-截至当前 PoC，ACEP 管理 OpenAPI 已验证的能力是实例管理、安装、启动和截图；它没有经实测的
-原始帧推送接口。相反，官方 Web/Android 客户端 SDK 暴露“设置外部源类型 + 启动外部视频/音频
-track”的接口。因此 `ClientExternalFrameAdapter` 是首个可验证的连续注入路径，`PodRawFrameAdapter`
-仍保留为等待官方服务端桥接资料后的候选实现。
+重读官方文档 1129851 确认 Proxy SDK 的部署形态：**它必须打包成 Android APP 安装在云机 Pod
+内部运行**。证据：① `DeviceProxyContext.getInstance(context)` 只接受 Android Context，无任何
+pod_id/地址/鉴权参数，不是网络 API；② C++ 产物名为 `libvdevice.so`，操作的是本地虚拟设备
+节点；③ `registerAppAsAudioSource("com.xxx")` 录制的是同设备上指定 APP 的音频；④ 官方要求
+旗舰型"设备"，因为注入进程消耗 Pod 自身资源。
 
 ```text
-Media I/O 服务 ──私有标准化帧协议──► Client External Gateway ──官方 SDK session──► Pod
-      ▲                                  （Web/原生客户端进程）
-      │  不含 Pod ID、STS、Endpoint
-VideoSourceRouter / AudioSourceRouter
+Media I/O 服务（Python 后台）
+      │ ① adb push fixture（I420/RGBA 帧文件、PCM 文件）
+      │ ② adb forward TCP → 私有 HTTP（仅 localhost）
+      ▼
+Pod 内 injector APP（集成 proxysdk aar，常驻前台服务）
+      │ DeviceProxyContext → CameraProxyManager / AudioProxyManager
+      │ （libvdevice.so → 虚拟设备节点）
+      ▼
+Pod 虚拟摄像头 / 虚拟麦克风
+      ▼
+media-probe APP（Camera2 / AudioRecord 读取）──► ACEP BatchScreenShot 取证
 ```
 
-Gateway 是服务受控子进程或同机私有 sidecar，而不是公开 API：它从凭证解析器/短期 token broker
-取得短期 SDK 会话凭证，设置视频和音频 source type 各一次，并为每个 `camera_stream`/麦克风源
-保留一个 MediaStreamTrack。`camera.stream.switch` 仅切换 gateway 上游帧内容，不能重启 track 或
-SDK session。若未配置受控 token broker、账号标识或 SDK runtime，`camera.video.inject` 与
-`microphone.pcm.inject` 必须保持 `unavailable`。
+注入链路特性：
 
-首期 token broker 使用服务自身 Keychain 凭证调用官方 `GetCallerIdentity` 获取账号标识，再以
-`PRISMLOOP_VEPHONE_STS_ROLE_TRN` 调用 `AssumeRole` 签发 15 分钟至 12 小时的短期 token。角色
-必须仅允许该服务 principal `sts:AssumeRole`，并限制到本 Harness 使用的云手机资源。浏览器/SDK
-进程只接收内存中的短期 token；不得回退使用长期 AK/SK，也不得把 token 写入 env 模板、SQLite、
-日志、TOS 或任何 MediaRun 结果。
+- **纯后台**：Python 侧经 ADB 推送与控制，无浏览器、无 Web SDK、无 STS 角色、无云端鉴权。
+- **逐帧可控**：视频 `putVideoFrame`（33ms/帧节奏由 injector 内 Handler 线程保证）、音频
+  `putAudioFrame`（10ms 周期，官方硬约束单次采样点 = sampleRate/100）。
+- **格式边界**：视频仅 I420（默认）/RGBA；音频仅 PCM。解码转换在 Python 侧完成（ffmpeg），
+  injector 只搬运裸数据。
+- **文件模式**：音频支持官方 `recordByFile(path, TYPE_CIRCLE)` 直接循环 PCM 文件，作为
+  最稳的音频注入兜底。
+- **互斥**：与客户端外部源/内部源注入互斥；切换前必须关闭占用摄像头/麦克风的应用。
+
+原"客户端外部源 Gateway"（gateway-web，Playwright + vePhone Web SDK）保留为备选实现：代码
+不删除，STS broker 设计继续有效，但不再作为 PoC 主线。其固有缺陷（浏览器形态依赖、JS 音频
+10ms 定时不可靠、需要 AssumeRole 角色配置）不再阻塞主线。
 
 `sequence` 是唯一的编排单位，只允许媒体和采集动作：
 
@@ -296,16 +305,22 @@ artifact://<store-ref>/
 运行开始前，服务依据 `inputs`、`sequence` 和 `recognizers` 计算所需能力。如果环境未被实测为
 `verified`，服务返回 `capability_unavailable`，绝不伪装为成功或静默降级。
 
-当前云手机 PoC 的能力账本：
+当前云手机 PoC 的能力账本（2026-08-31 Pod 裸数据注入 PoC 后更新）：
 
 | capability | 当前状态 | 证据 |
 |---|---|---|
 | `screen.image.capture` | `verified` | ACEP `BatchScreenShot` |
 | `screen.video.capture` | `unverified` | 尚无通过 Harness capture adapter 的真实录屏证据 |
-| `camera.video.inject` | `unverified` | `camera_file_preview` 仅静态诊断，不能代表外部帧注入 |
-| `camera.continuous_stream_switch` | `unverified` | 需 SDK/原始帧流 PoC；ADB 文件路径切换不计入验证 |
-| `microphone.pcm.inject` | `unverified` | 需客户端 SDK 或 Pod 原始流 PoC |
-| `speaker.audio.capture` | `unverified` | 尚无独立云机采集与完整性证据 |
+| `camera.video.inject` | `verified` | Pod 裸数据注入 PoC：injector APP 经 Proxy SDK `putVideoFrame` 推 I420 帧，media-probe（Camera2 消费者）实测显示彩条视频帧流；证据 `reports/inject-poc-1788188248/inject-verified.png` |
+| `camera.continuous_stream_switch` | `verified` | PoC 实测 A→B 切换（彩条→纯红）：帧计数 2453→2553 连续递增、camera session 保持 open、画面即时切换无断流；证据 `reports/inject-poc-1788188248/hotswitch-verified.png` |
+| `microphone.pcm.inject` | `verified` | PoC 实测：injector 注册 `AudioCallback` 后 `recordByFile(TYPE_CIRCLE)` 循环 PCM，AudioProxyService 确认 `MIC_TRACE stage=service_start startInject`，media-probe `AudioRecord` 消费虚拟麦克风（audio session open=true） |
+| `speaker.audio.capture` | `unverified` | 尚无独立云机采集与完整性证据（ACEP `StartRecording` 返回 RecordNotFound 待排查） |
+
+PoC 关键实现事实（写入账本备注）：
+- Proxy SDK 实际包名 `com.ss.device.*`（非官方文档示例的直觉包名），`putVideoFrame(byte[], int, VideoFrameConfig)` 签名经 javap 校验
+- `recordByFile` 前必须先 `registerCallback`（AudioCallback），否则 AudioProxyService 报 `no audio call back on audio start!` 且 `put audio frame failed`
+- injector 进程重启后，摄像头会话需消费者（Camera2 APP）重开触发 `onStart` 重建管道；音频会话同理
+- `cpmimpl: put audio frame failed`（~33ms 周期）为视频帧推送的伴生音频通道失败（fixture 无音轨），不影响视频注入
 
 `camera.video.inject` 与 `microphone.pcm.inject` 是独立能力；不得把带 AAC 音轨的 MP4 注入
 相机后，推断麦克风已经得到音频。
