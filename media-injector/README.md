@@ -19,7 +19,7 @@ Prismloop Media I/O Harness 的 Pod 内注入器:云机实例内常驻的 Androi
 ## 前提
 
 - 云机实例规格:旗舰型(当前 prismloop-poc `g2.8c16g.plus` 满足)
-- `app/libs/` 已放入 `proxysdk-0.2.2.3.2.aar`(见 libs/PUT-PROXYSDK-HERE.md)
+- `app/libs/proxysdk-0.2.2.3.2.aar` 已随仓库入库,clone 后可直接构建(见 libs/README.md)
 
 ## 构建
 

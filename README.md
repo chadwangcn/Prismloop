@@ -80,7 +80,7 @@ pip install -r requirements.txt
 # 3. 生成注入 fixture(视频→I420 帧流,音频→PCM)
 python3 scripts/prepare_media_fixture.py
 
-# 4. 构建 injector APP(需先下载 Proxy SDK aar,见 media-injector/app/libs/)
+# 4. 构建 injector APP(Proxy SDK aar 已随仓库 vendor,无需额外下载)
 JAVA_HOME=<jdk17> ANDROID_HOME=<sdk> gradle -p media-injector :app:assembleDebug
 
 # 5. 运行注入 PoC(自动安装到 Pod + 注入 + 截图取证)
@@ -93,7 +93,7 @@ python -m pytest tests/ -q
 ## 前提条件
 
 - 火山引擎云手机实例(注入需**旗舰型**规格,如 g2.8c16g.plus)
-- [Proxy SDK](https://docs.volcengine.com/docs/6394/1129851)(proxysdk aar,手动下载放 `media-injector/app/libs/`)
+- [Proxy SDK](https://docs.volcengine.com/docs/6394/1129851)(proxysdk aar 已 vendor 在 `media-injector/app/libs/`)
 - JDK 17 + Android SDK 34(APK 构建)
 - ffmpeg / ffprobe(fixture 预解码与音频分析)
 - Python 3.9+
