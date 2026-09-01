@@ -5,13 +5,18 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Callable, Mapping
 from urllib.parse import parse_qs, urlparse
 
 from .media_service import MediaRunConflictError, MediaRunService, MediaRunValidationError
 
 
-def make_handler(service: MediaRunService):
-    """Create a request handler bound to one service instance."""
+def make_handler(service: MediaRunService, health_check: Callable[[], Mapping] | None = None):
+    """Create a request handler bound to one service instance.
+
+    ``health_check`` is the deployment probe (架构文档 12 P6): it returns a
+    JSON-serializable mapping when healthy and raises otherwise.
+    """
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "PrismloopMediaHarness/0.1"
@@ -41,6 +46,17 @@ def make_handler(service: MediaRunService):
 
         def do_GET(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
+            if parsed.path == "/healthz":
+                if health_check is None:
+                    self._write_json(HTTPStatus.OK, {"status": "ok", "checks": {}})
+                    return
+                try:
+                    payload = health_check()
+                except Exception as exc:  # noqa: BLE001 - probe surfaces all failures
+                    self._write_json(HTTPStatus.SERVICE_UNAVAILABLE, {"status": "error", "error": str(exc)})
+                    return
+                self._write_json(HTTPStatus.OK, payload)
+                return
             if parsed.path == "/v1/media-capabilities":
                 environment_ref = parse_qs(parsed.query).get("environment_ref", [""])[0]
                 self._write_json(HTTPStatus.OK, {"capabilities": service.capabilities_for(environment_ref)})
@@ -74,6 +90,11 @@ def make_handler(service: MediaRunService):
     return Handler
 
 
-def create_server(service: MediaRunService, host: str = "127.0.0.1", port: int = 8787) -> ThreadingHTTPServer:
+def create_server(
+    service: MediaRunService,
+    host: str = "127.0.0.1",
+    port: int = 8787,
+    health_check: Callable[[], Mapping] | None = None,
+) -> ThreadingHTTPServer:
     """Create, but do not start, the local service listener."""
-    return ThreadingHTTPServer((host, port), make_handler(service))
+    return ThreadingHTTPServer((host, port), make_handler(service, health_check))

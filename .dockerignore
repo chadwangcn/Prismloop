@@ -1,0 +1,27 @@
+# 凭证与本地配置(安全硬约束:不入镜像)
+config/env.local.json
+config/*.env
+!config/media-harness.template.env
+
+# 数据与证据
+data/
+reports/
+assets/
+*.sqlite
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 构建产物(仅保留两个 APK,由 Dockerfile 显式 COPY)
+media-injector/.gradle/
+media-injector/app/build/intermediates/
+media-probe/build/
+gateway-web/
+node_modules/
+
+# 临时
+/tmp/
+*.log
+.DS_Store
