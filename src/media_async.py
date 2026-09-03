@@ -37,6 +37,7 @@ class AsyncMediaRunService:
         audio_adapter: ExternalAudioAdapter | None = None,
         audio_source_resolver: AudioSourceResolver | None = None,
         capture_adapter: MediaCaptureAdapter | None = None,
+        ui_adapter=None,
         wait_sleep: Callable[[float], None] | None = None,
         worker_id: str = "media-worker-1",
         lease_seconds: int = 60,
@@ -50,6 +51,7 @@ class AsyncMediaRunService:
         self._audio_adapter = audio_adapter
         self._audio_source_resolver = audio_source_resolver
         self._capture_adapter = capture_adapter
+        self._ui_adapter = ui_adapter
         self._wait_sleep = wait_sleep
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
@@ -126,5 +128,6 @@ class AsyncMediaRunService:
             audio_adapter=self._audio_adapter,
             audio_source_resolver=self._audio_source_resolver,
             capture_adapter=self._capture_adapter,
+            ui_adapter=self._ui_adapter,
             wait_sleep=self._wait_sleep,
         )

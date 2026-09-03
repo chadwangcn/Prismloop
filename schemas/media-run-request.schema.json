@@ -73,14 +73,23 @@
     },
     "step": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["step_id", "action"],
       "properties": {
         "step_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
-        "action": {"enum": ["input.stage", "input.start", "input.stop", "camera.stream.open", "camera.stream.switch", "camera.stream.close", "capture.screenshot", "capture.video.start", "capture.video.stop", "capture.audio.start", "capture.audio.stop", "wait"]},
+        "action": {"enum": ["input.stage", "input.start", "input.stop", "camera.stream.open", "camera.stream.switch", "camera.stream.close", "capture.screenshot", "capture.video.start", "capture.video.stop", "capture.audio.start", "capture.audio.stop", "wait", "ui.tap", "ui.swipe", "ui.text", "ui.key", "ui.launch_app", "ui.dump"]},
         "input_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
         "stream_id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"},
-        "duration_ms": {"type": "integer", "minimum": 1, "maximum": 3600000}
+        "duration_ms": {"type": "integer", "minimum": 1, "maximum": 3600000},
+        "x": {"type": "integer", "minimum": 0, "maximum": 7680},
+        "y": {"type": "integer", "minimum": 0, "maximum": 7680},
+        "x1": {"type": "integer", "minimum": 0, "maximum": 7680},
+        "y1": {"type": "integer", "minimum": 0, "maximum": 7680},
+        "x2": {"type": "integer", "minimum": 0, "maximum": 7680},
+        "y2": {"type": "integer", "minimum": 0, "maximum": 7680},
+        "value": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "keycode": {"type": "integer", "minimum": 0, "maximum": 65535},
+        "package": {"type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_.]{0,255}$"},
+        "activity": {"type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_.]{0,255}$"}
       },
       "allOf": [
         {
@@ -98,6 +107,31 @@
         {
           "if": {"properties": {"action": {"const": "wait"}}},
           "then": {"required": ["duration_ms"]}
+        },
+        {
+          "if": {"properties": {"action": {"const": "ui.tap"}}},
+          "then": {"required": ["x", "y"]},
+          "else": {"not": {"anyOf": [{"required": ["x"]}, {"required": ["y"]}]}}
+        },
+        {
+          "if": {"properties": {"action": {"const": "ui.swipe"}}},
+          "then": {"required": ["x1", "y1", "x2", "y2"]},
+          "else": {"not": {"anyOf": [{"required": ["x1"]}, {"required": ["y1"]}, {"required": ["x2"]}, {"required": ["y2"]}]}}
+        },
+        {
+          "if": {"properties": {"action": {"const": "ui.text"}}},
+          "then": {"required": ["value"]},
+          "else": {"not": {"required": ["value"]}}
+        },
+        {
+          "if": {"properties": {"action": {"const": "ui.key"}}},
+          "then": {"required": ["keycode"]},
+          "else": {"not": {"required": ["keycode"]}}
+        },
+        {
+          "if": {"properties": {"action": {"const": "ui.launch_app"}}},
+          "then": {"required": ["package"]},
+          "else": {"not": {"anyOf": [{"required": ["package"]}, {"required": ["activity"]}]}}
         }
       ]
     },

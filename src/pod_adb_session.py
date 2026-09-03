@@ -187,6 +187,61 @@ class PodAdbSession:
             )
         return r.stdout
 
+    # ------------------------------------------------------------ UI 交互
+
+    def ui_tap(self, x: int, y: int) -> None:
+        """单击屏幕坐标(adb input tap)。"""
+        self._check(self._adb("shell", f"input tap {int(x)} {int(y)}"), "input tap")
+
+    def ui_swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
+        """滑动(adb input swipe)。"""
+        self._check(
+            self._adb("shell", f"input swipe {int(x1)} {int(y1)} {int(x2)} {int(y2)} {int(duration_ms)}"),
+            "input swipe",
+        )
+
+    def ui_text(self, value: str) -> None:
+        """输入文本(adb input text;仅 ASCII,不支持中文)。"""
+        # 防注入:只允许安全字符进入 shell
+        if not value or any(c in value for c in "\"'`$;&|<>(){}\n"):
+            raise PodAdbSessionError(f"unsupported text input: {value!r}")
+        self._check(self._adb("shell", f"input text {value}"), "input text")
+
+    def ui_key(self, keycode: int) -> None:
+        """按键(adb input keyevent,如 4=BACK 66=ENTER)。"""
+        self._check(self._adb("shell", f"input keyevent {int(keycode)}"), "input keyevent")
+
+    def ui_launch_app(self, package: str, activity: str | None = None) -> None:
+        """启动 APP(am start);activity 为空时用 launcher intent 启动包。"""
+        if any(c in package for c in "\"'`$;&|<>(){}\n"):
+            raise PodAdbSessionError(f"unsupported package: {package!r}")
+        if activity is None:
+            self._check(self._adb("shell", f"monkey -p {package} -c android.intent.category.LAUNCHER 1"), "am start")
+        else:
+            if any(c in activity for c in "\"'`$;&|<>(){}\n"):
+                raise PodAdbSessionError(f"unsupported activity: {activity!r}")
+            self._check(self._adb("shell", f"am start -n {package}/{activity}"), "am start")
+
+    def ui_dump(self) -> bytes:
+        """uiautomator dump 控件树,返回 XML 字节(供 Agent 定位控件坐标)。"""
+        self._adb("shell", "rm -f /sdcard/window_dump.xml", timeout=30)
+        r = self._adb("shell", "uiautomator dump /sdcard/window_dump.xml", timeout=60)
+        # 部分机型 dump 成功输出到 stderr('UI hierchary dumped to: ...')
+        if r.returncode != 0:
+            raise PodAdbSessionError(f"uiautomator dump failed: {r.stderr[:200]}")
+        out = self._adb("shell", "cat /sdcard/window_dump.xml", timeout=30)
+        content = out.stdout
+        if isinstance(content, str):
+            content = content.encode("utf-8")
+        if out.returncode != 0 or b"<hierarchy" not in content:
+            raise PodAdbSessionError(f"ui dump read failed: {out.stderr[:200]}")
+        return content
+
+    @staticmethod
+    def _check(r: subprocess.CompletedProcess, what: str) -> None:
+        if r.returncode != 0:
+            raise PodAdbSessionError(f"{what} failed: {r.stderr[:200]}")
+
     # --------------------------------------------------------------- P3 续租
 
     def start_refresh_loop(self) -> None:

@@ -50,6 +50,31 @@ class Capability:
         return result
 
 
+class UiInteractAdapter(Protocol):
+    """Device UI interaction boundary (adb input / uiautomator).
+
+    与 MediaCaptureAdapter 同层:业务无关的设备能力边界,由 provider 装配。
+    """
+
+    def tap(self, x: int, y: int) -> None:
+        ...
+
+    def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int) -> None:
+        ...
+
+    def text(self, value: str) -> None:
+        ...
+
+    def key(self, keycode: int) -> None:
+        ...
+
+    def launch_app(self, package: str, activity: str | None) -> None:
+        ...
+
+    def dump(self) -> bytes:
+        ...
+
+
 class ArtifactStore(Protocol):
     """Persistence boundary for immutable input snapshots and run evidence."""
 
@@ -136,6 +161,7 @@ class MediaRunService:
         audio_adapter: Optional[ExternalAudioAdapter] = None,
         audio_source_resolver: Optional[AudioSourceResolver] = None,
         capture_adapter: Optional[MediaCaptureAdapter] = None,
+        ui_adapter: Optional["UiInteractAdapter"] = None,
         wait_sleep: Optional[Callable[[float], None]] = None,
     ) -> None:
         self._artifact_store = artifact_store
@@ -144,6 +170,7 @@ class MediaRunService:
         self._audio_adapter = audio_adapter
         self._audio_source_resolver = audio_source_resolver
         self._capture_adapter = capture_adapter
+        self._ui_adapter = ui_adapter
         # None → 确定性零等待(本地 demo/单测);真实设备 bootstrap 传真实睡眠,
         # 让 wait 期间注入效果在设备上真实发生(架构文档 11 §5.1)。
         self._wait_sleep = wait_sleep
@@ -345,6 +372,27 @@ class MediaRunService:
                 elif action == "capture.screenshot":
                     captured = self._capture().capture_screenshot()
                     self._store_capture(run_id, step["step_id"], "screen.image", captured.payload, captured.media_type)
+                elif action in ("ui.tap", "ui.swipe", "ui.text", "ui.key", "ui.launch_app", "ui.dump"):
+                    if self._ui_adapter is None:
+                        raise MediaRunValidationError("ui adapter is not configured")
+                    if action == "ui.tap":
+                        self._ui_adapter.tap(step["x"], step["y"])
+                    elif action == "ui.swipe":
+                        self._ui_adapter.swipe(
+                            step["x1"], step["y1"], step["x2"], step["y2"],
+                            step.get("duration_ms", 300),
+                        )
+                    elif action == "ui.text":
+                        self._ui_adapter.text(step["value"])
+                    elif action == "ui.key":
+                        self._ui_adapter.key(step["keycode"])
+                    elif action == "ui.launch_app":
+                        self._ui_adapter.launch_app(step["package"], step.get("activity"))
+                    else:  # ui.dump
+                        payload = self._ui_adapter.dump()
+                        self._store_capture(
+                            run_id, step["step_id"], "ui.tree", payload, "application/xml"
+                        )
                 elif action == "capture.video.start":
                     self._capture().start_screen_video()
                 elif action == "capture.video.stop":
@@ -425,7 +473,8 @@ class MediaRunService:
         if not payload:
             raise MediaRunValidationError(f"capture adapter returned empty {kind} payload")
         extension = {
-            "image/png": "png", "image/jpeg": "jpg", "video/mp4": "mp4", "video/webm": "webm", "audio/wav": "wav"
+            "image/png": "png", "image/jpeg": "jpg", "video/mp4": "mp4", "video/webm": "webm", "audio/wav": "wav",
+            "application/xml": "xml",
         }.get(media_type)
         if extension is None:
             raise MediaRunValidationError(f"unsupported captured media type: {media_type}")
@@ -459,6 +508,10 @@ class MediaRunService:
             required.add("microphone.pcm.inject")
         if "capture.screenshot" in actions:
             required.add("screen.image.capture")
+        if {"ui.tap", "ui.swipe", "ui.text", "ui.key", "ui.launch_app"} & actions:
+            required.add("ui.interact")
+        if "ui.dump" in actions:
+            required.add("ui.tree")
         if {"capture.video.start", "capture.video.stop"} & actions:
             required.add("screen.video.capture")
         if {"capture.audio.start", "capture.audio.stop"} & actions:
@@ -587,9 +640,22 @@ class MediaRunService:
         actions = {
             "input.stage", "input.start", "input.stop", "camera.stream.open", "camera.stream.switch", "camera.stream.close",
             "capture.screenshot", "capture.video.start", "capture.video.stop", "capture.audio.start", "capture.audio.stop", "wait",
+            "ui.tap", "ui.swipe", "ui.text", "ui.key", "ui.launch_app", "ui.dump",
+        }
+        ui_step_fields = {
+            "ui.tap": {"step_id", "action", "x", "y"},
+            "ui.swipe": {"step_id", "action", "x1", "y1", "x2", "y2", "duration_ms"},
+            "ui.text": {"step_id", "action", "value"},
+            "ui.key": {"step_id", "action", "keycode"},
+            "ui.launch_app": {"step_id", "action", "package", "activity"},
+            "ui.dump": {"step_id", "action"},
         }
         for step in request["sequence"]:
-            if not isinstance(step, Mapping) or set(step) - {"step_id", "action", "input_id", "stream_id", "duration_ms"}:
+            action = step.get("action")
+            if action in ui_step_fields:
+                if not isinstance(step, Mapping) or set(step) - ui_step_fields[action]:
+                    raise MediaRunValidationError(f"{action} step contains unsupported fields")
+            elif not isinstance(step, Mapping) or set(step) - {"step_id", "action", "input_id", "stream_id", "duration_ms"}:
                 raise MediaRunValidationError("sequence step contains unsupported fields")
             action = step.get("action")
             if action not in actions:

@@ -73,13 +73,16 @@ def build_pod_injector_service(
     wait_sleep: Callable[[float], None] | None = time.sleep,
     ffmpeg_path: str = "ffmpeg",
     capture_screenshot: Callable[[], bytes] | None = None,
+    ui_session=None,
 ) -> AsyncMediaRunService:
     """组装 Pod 裸数据注入路径的 MediaRun 服务(架构文档 11 §5.1)。
 
     前提(由调用方保证):Pod 内 injector APP 已运行、`adb forward` 已建立,
     ``push_fixture`` 能把本地目录放置到 Pod 文件系统。能力账本以 2026-08-31
     PoC 实测为准;``capture_screenshot``(PodAdbSession.capture_screenshot)
-    提供 screen.image.capture 能力(adb screencap,冒烟 2026-09-02)。
+    提供 screen.image.capture 能力(adb screencap,冒烟 2026-09-02);
+    ``ui_session``(PodAdbSession)提供 ui.interact / ui.tree 能力
+    (adb input / uiautomator,冒烟 2026-09-03)。
     """
 
     class _PodScreenCaptureAdapter:
@@ -103,6 +106,30 @@ def build_pod_injector_service(
         def stop_speaker_audio(self):
             raise RuntimeError("speaker audio capture is not verified for this adapter")
 
+    class _PodUiInteractAdapter:
+        """UiInteractAdapter:adb input / uiautomator,委托 PodAdbSession。"""
+
+        def __init__(self, session) -> None:
+            self._session = session
+
+        def tap(self, x: int, y: int) -> None:
+            self._session.ui_tap(x, y)
+
+        def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int) -> None:
+            self._session.ui_swipe(x1, y1, x2, y2, duration_ms)
+
+        def text(self, value: str) -> None:
+            self._session.ui_text(value)
+
+        def key(self, keycode: int) -> None:
+            self._session.ui_key(keycode)
+
+        def launch_app(self, package: str, activity: str | None) -> None:
+            self._session.ui_launch_app(package, activity)
+
+        def dump(self) -> bytes:
+            return self._session.ui_dump()
+
     client = PodInjectorClient(
         host=injector_host, port=injector_port, timeout_seconds=request_timeout_seconds
     )
@@ -125,6 +152,15 @@ def build_pod_injector_service(
         capabilities[environment_ref]["screen.image.capture"] = Capability(
             "screen.image.capture", "verified", "adb screencap smoke 2026-09-02"
         )
+    ui_adapter = None
+    if ui_session is not None:
+        ui_adapter = _PodUiInteractAdapter(ui_session)
+        capabilities[environment_ref]["ui.interact"] = Capability(
+            "ui.interact", "verified", "adb input smoke 2026-09-03"
+        )
+        capabilities[environment_ref]["ui.tree"] = Capability(
+            "ui.tree", "verified", "uiautomator dump smoke 2026-09-03"
+        )
     return AsyncMediaRunService(
         store=MediaRunStore(state_db_path),
         artifact_store=artifact_store,
@@ -143,6 +179,7 @@ def build_pod_injector_service(
             remote_root=remote_root,
         ),
         capture_adapter=capture_adapter,
+        ui_adapter=ui_adapter,
         wait_sleep=wait_sleep,
         capabilities=capabilities,
     )
@@ -193,6 +230,7 @@ def build_production_pod_service(
         artifact_store=artifact_store,
         push_fixture=session.push_fixture,
         capture_screenshot=session.capture_screenshot,
+        ui_session=session,
         state_db_path=state_db_path,
         injector_port=injector_port,
         remote_root=remote_root,

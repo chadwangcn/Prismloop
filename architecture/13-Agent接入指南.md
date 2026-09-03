@@ -95,9 +95,34 @@ curl $BASE/v1/media-runs/<run_id>
 }
 ```
 
-### 结果解读（关键字段）
+### UI 交互 action（APP 功能触发，冒烟 2026-09-03）
 
+对被测 APP 做真实 UI 操作，与媒体注入编排组合成完整业务闭环。能力：`ui.interact`（tap/swipe/text/key/launch_app）、`ui.tree`（dump 控件树）。
+
+| action | 必填字段 | 语义 |
+|---|---|---|
+| `ui.tap` | `x`, `y` | 单击坐标 |
+| `ui.swipe` | `x1`,`y1`,`x2`,`y2`（可选 `duration_ms`） | 滑动 |
+| `ui.text` | `value`（仅 ASCII） | 输入文本 |
+| `ui.key` | `keycode`（4=BACK 66=ENTER…） | 按键 |
+| `ui.launch_app` | `package`（可选 `activity`） | 启动 APP |
+| `ui.dump` | — | 控件树 XML → 输出 `ui.tree` artifact |
+
+典型用法（Agent 自主定位控件）：先 `ui.dump` 拿控件树 XML → 解析目标控件的 `bounds` 得到坐标 → `ui.tap` → `capture.screenshot` 验证结果：
+
+```json
+"sequence": [
+  {"step_id": "launch", "action": "ui.launch_app", "package": "com.example.app"},
+  {"step_id": "wait0",  "action": "wait", "duration_ms": 2000},
+  {"step_id": "dump",   "action": "ui.dump"},
+  {"step_id": "tap",    "action": "ui.tap", "x": 320, "y": 240},
+  {"step_id": "shot",   "action": "capture.screenshot"}
+]
 ```
+
+> 说明：UI 触发/截图走 ADB 通道（`adb input` / `uiautomator` / `screencap`），非云手机 OpenAPI——后者截图接口（BatchScreenShot）实测异常且无触控指令接口，详见已知限制。
+
+### 结果解读（关键字段）
 status:                queued → running → completed | capability_unavailable | error | canceled
 outputs[]:             每步采集产物（screen.image / screen.video / speaker.audio / execution.log）
                        每项含 artifact_id + artifact_ref + sha256，先落盘后登记，拿到即完整
