@@ -1,0 +1,53 @@
+src/media_server.py
+  s_bbfdc7fd83ff43::t_ab9a6ed0b9fe31 155-163
+  s_bbfdc7fd83ff43::t_175f6327fca431 182
+  s_bbfdc7fd83ff43::t_324359bd52575b 233
+  s_bbfdc7fd83ff43::t_c6d28cd09fa314 132
+  s_bbfdc7fd83ff43::t_3970ae420e2cf0 76,83-85,109-131
+src/media_service.py
+  s_bbfdc7fd83ff43::t_76c8e01db82efa 53-77
+  s_bbfdc7fd83ff43::t_df781614df4da2 375-395
+  s_bbfdc7fd83ff43::t_c6dc6057de1d69 476-477
+  s_bbfdc7fd83ff43::t_589abb9f352b6f 164,173
+  s_bbfdc7fd83ff43::t_d51a2aba7f8957 511-514
+  s_bbfdc7fd83ff43::t_446ff7d322e9ea 643-651,654-658
+schemas/media-run-request.schema.json
+  s_bbfdc7fd83ff43::t_bb9b1147510231 79,82-92,110-134
+src/media_async.py
+  s_bbfdc7fd83ff43::t_dafb0e2255c780 131
+  s_bbfdc7fd83ff43::t_c4a6fc71fbb40f 40,54
+architecture/13-Agent接入指南.md
+  s_bbfdc7fd83ff43::t_9281d0557ebcbf 125
+  s_bbfdc7fd83ff43::t_2c0bf6be5c9fd5 98-111,113-120,122-124
+src/pod_adb_session.py
+  s_bbfdc7fd83ff43::t_8b73d2f32fb874 190-232,237,239-244
+  s_bbfdc7fd83ff43::t_276d6fabbc320d 233-236,238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "0e042ac115b071a2bdced1f8f82c133d04aa7d01",
+  "prompts": {},
+  "sessions": {
+    "s_bbfdc7fd83ff43": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a7495f84687ba1cea3b23cd",
+        "model": "glm-5.3__dev"
+      },
+      "human_author": "Hydra Automation <bot@hydrageek.com>",
+      "custom_attributes": {
+        "client_type": "ide",
+        "display_model_name": "GLM-5.3",
+        "tool_use_id": "6a9925f952b7017f58868429",
+        "edit_kind": "file_edit",
+        "external_session_id": "6a7495f84687ba1cea3b23cd",
+        "operation_id": "6a9925f952b7017f58868429",
+        "tool_name": "Edit",
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "session_id": "6a7495f84687ba1cea3b23cd"
+      }
+    }
+  }
+}
