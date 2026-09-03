@@ -50,6 +50,7 @@ public final class FrameFeeder {
     private volatile int frameFormat = PodProxy.FORMAT_I420;
     private volatile long frameIntervalMs = 33;
     private volatile boolean running = false;
+    private volatile boolean cameraEverOpened = false;
     private volatile int cursor = 0;
     private volatile long pushedCount = 0;
     private volatile String currentDir = "";
@@ -99,6 +100,10 @@ public final class FrameFeeder {
         if (!d.isDirectory()) {
             throw new IOException("fixture dir not found: " + dir);
         }
+
+        int prevWidth = this.frameWidth;
+        int prevHeight = this.frameHeight;
+        int prevFormat = this.frameFormat;
 
         Manifest mf = readManifest(d);
         this.frameWidth = mf.width;
@@ -154,12 +159,23 @@ public final class FrameFeeder {
         this.cursor = 0;
         this.running = true;
 
-        // 通知 PodProxy 当前帧参数(宽高/格式可能与上次不同)
-        try {
-            podProxy.openCamera(frameWidth, frameHeight, frameFormat, 0, null);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("camera open interrupted");
+        // VideoFrameConfig 重建时机(2026-09-03 四象限实验定位的 SDK 行为):
+        //  - feed 运行中重建 → 中断 SDK → 已附着消费端的帧流,画面冻结(禁止);
+        //  - feed 从停止重启时重建 → 重新绑定当前附着的消费端,帧流恢复(必须;
+        //    消费端(probe/相机)重新打开相机会话后,只有重建 config 才能重新收到帧)。
+        // 因此:仅"从停止启动 / 宽高格式变化 / 首次"才调用 openCamera,
+        // 参数不变的运行中切换(无断流热切换)只换数据源,绝不触碰 camera 会话。
+        boolean cameraParamsChanged = prevWidth != this.frameWidth
+                || prevHeight != this.frameHeight
+                || prevFormat != this.frameFormat;
+        if (!wasRunning || cameraParamsChanged || !cameraEverOpened) {
+            try {
+                podProxy.openCamera(frameWidth, frameHeight, frameFormat, 0, null);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("camera open interrupted");
+            }
+            cameraEverOpened = true;
         }
 
         if (!wasRunning) {
