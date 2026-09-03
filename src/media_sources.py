@@ -48,12 +48,15 @@ class ArtifactVideoSourceResolver:
 
     def _decode(self, fixture_path: Path, profile: StreamProfile) -> bytes:
         pixel_format = profile.pixel_format
+        # hflip,vflip:注入链路补偿。PodRawFrame 链路(SDK putVideoFrame → 虚拟摄像头 →
+        # 消费端按 sensorOrientation 旋转显示)整体给推送帧叠加 180° 旋转
+        # (四象限图案实验验证,与流尺寸无关),预旋转 180° 使画面正立。
         command = [
             self._ffmpeg_path,
             "-v", "error",
             "-i", str(fixture_path),
             "-an",
-            "-vf", f"scale={profile.width}:{profile.height}:flags=lanczos,fps={profile.fps}",
+            "-vf", f"hflip,vflip,scale={profile.width}:{profile.height}:flags=lanczos,fps={profile.fps}",
             "-pix_fmt", pixel_format,
             "-f", "rawvideo",
             "pipe:1",

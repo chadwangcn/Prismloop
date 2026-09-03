@@ -36,8 +36,14 @@ def probe_int(video: Path, key: str) -> int:
     return int(out.split("/")[0])
 
 
-def build_video_fixture(video: Path, out_dir: Path, max_frames: int = 0) -> Path:
-    """视频 → I420 裸帧流 + manifest.json"""
+def build_video_fixture(video: Path, out_dir: Path, max_frames: int = 0,
+                        rotate_180: bool = True) -> Path:
+    """视频 → I420 裸帧流 + manifest.json。
+
+    rotate_180: 注入链路补偿。PodRawFrame 链路(Proxy SDK putVideoFrame → 虚拟摄像头 →
+    消费端按 sensorOrientation=90 旋转显示)整体会给推送帧叠加 180° 顺时针旋转
+    (经四象限图案三次实验验证,与流尺寸无关)。预旋转 180°(hflip+vflip)使画面正立。
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     raw = out_dir / "video.bin"
 
@@ -48,6 +54,8 @@ def build_video_fixture(video: Path, out_dir: Path, max_frames: int = 0) -> Path
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(video)]
     if max_frames > 0:
         cmd += ["-frames:v", str(max_frames)]
+    if rotate_180:
+        cmd += ["-vf", "hflip,vflip"]
     cmd += ["-f", "rawvideo", "-pix_fmt", "yuv420p", str(raw)]
     subprocess.run(cmd, check=True)
 
@@ -88,10 +96,13 @@ def main() -> int:
     ap.add_argument("--audio", type=Path, default=REPO_ROOT / "assets/audios/test-tone-440hz.m4a")
     ap.add_argument("--out", type=Path, default=Path("/tmp/prismloop-fixture"))
     ap.add_argument("--max-frames", type=int, default=0, help="限制解码帧数(调试)")
+    ap.add_argument("--no-rotate-180", action="store_true",
+                    help="禁用注入链路 180° 预旋转补偿(默认开启)")
     args = ap.parse_args()
 
     if args.video.exists():
-        build_video_fixture(args.video, args.out / "video-a", args.max_frames)
+        build_video_fixture(args.video, args.out / "video-a", args.max_frames,
+                            rotate_180=not args.no_rotate_180)
     else:
         print(f"[video] skip, not found: {args.video}", file=sys.stderr)
 

@@ -172,6 +172,21 @@ class PodAdbSession:
             raise PodAdbSessionError(f"adb push {local_dir} -> {remote_dir} failed: {r.stderr[:300]}")
         return remote_dir
 
+    # ------------------------------------------------------------ 屏幕采集
+
+    def capture_screenshot(self) -> bytes:
+        """`adb exec-out screencap -p` 截屏,返回 PNG 字节(二进制安全)。"""
+        target = self._require_target()
+        r = subprocess.run(
+            [self._adb_path, "-s", target, "exec-out", "screencap", "-p"],
+            capture_output=True, timeout=60,
+        )
+        if r.returncode != 0 or not r.stdout.startswith(b"\x89PNG"):
+            raise PodAdbSessionError(
+                f"adb screencap failed: rc={r.returncode} stderr={r.stderr[:200]!r}"
+            )
+        return r.stdout
+
     # --------------------------------------------------------------- P3 续租
 
     def start_refresh_loop(self) -> None:

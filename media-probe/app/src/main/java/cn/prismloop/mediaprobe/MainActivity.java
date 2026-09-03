@@ -4,18 +4,22 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Matrix;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
+import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
+import android.util.Size;
 import android.view.Gravity;
 import android.view.Surface;
 import android.view.TextureView;
@@ -33,6 +37,7 @@ import java.util.concurrent.Executors;
  * It intentionally emits no pass/fail verdict and does not persist media content.
  */
 public final class MainActivity extends Activity implements TextureView.SurfaceTextureListener {
+    private static final String TAG = "MediaProbe";
     private static final int REQUEST_MEDIA_PERMISSIONS = 100;
     private static final int SAMPLE_RATE_HZ = 48_000;
     private static final int CHANNEL_COUNT = 1;
@@ -49,6 +54,7 @@ public final class MainActivity extends Activity implements TextureView.SurfaceT
     private volatile boolean audioRunning;
     private long cameraFrameCount;
     private long audioSampleCount;
+    private int sensorOrientationDegrees;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -68,8 +74,6 @@ public final class MainActivity extends Activity implements TextureView.SurfaceT
 
         preview = new TextureView(this);
         preview.setSurfaceTextureListener(this);
-        content.addView(preview, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f));
 
         ScrollView scroll = new ScrollView(this);
         LinearLayout diagnostics = new LinearLayout(this);
@@ -81,8 +85,26 @@ public final class MainActivity extends Activity implements TextureView.SurfaceT
         diagnostics.addView(cameraStatus);
         diagnostics.addView(audioStatus);
         scroll.addView(diagnostics);
-        content.addView(scroll, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        boolean landscape = getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+        if (landscape) {
+            // 横屏:预览占左侧主区,诊断面板固定宽度靠右,避免文本挤压预览高度。
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.addView(preview, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.MATCH_PARENT, 1.0f));
+            row.addView(scroll, new LinearLayout.LayoutParams(
+                    (int) (150 * getResources().getDisplayMetrics().density),
+                    LinearLayout.LayoutParams.MATCH_PARENT));
+            content.addView(row, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        } else {
+            content.addView(preview, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.0f));
+            content.addView(scroll, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
         return content;
     }
 
@@ -135,6 +157,10 @@ public final class MainActivity extends Activity implements TextureView.SurfaceT
                 cameraStatus.setText("Camera: no camera device reported");
                 return;
             }
+            CameraCharacteristics characteristics = manager.getCameraCharacteristics(selected);
+            Integer orientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+            sensorOrientationDegrees = orientation == null ? 0 : orientation;
+            Log.i(TAG, "sensorOrientation=" + sensorOrientationDegrees);
             manager.openCamera(selected, new CameraDevice.StateCallback() {
                 @Override public void onOpened(CameraDevice device) {
                     camera = device;
@@ -151,7 +177,8 @@ public final class MainActivity extends Activity implements TextureView.SurfaceT
                     device.close();
                 }
             }, mainHandler);
-            cameraStatus.setText("Camera: opening id=" + selected);
+            cameraStatus.setText("Camera: opening id=" + selected
+                    + "; sensorOrientation=" + sensorOrientationDegrees + "°");
         } catch (Exception error) {
             cameraStatus.setText("Camera: " + error.getClass().getSimpleName() + ": " + error.getMessage());
         }
@@ -171,8 +198,15 @@ public final class MainActivity extends Activity implements TextureView.SurfaceT
 
     private void createPreviewSession() {
         if (camera == null || !preview.isAvailable()) return;
-        Surface surface = new Surface(preview.getSurfaceTexture());
+        SurfaceTexture texture = preview.getSurfaceTexture();
+        Surface surface = new Surface(texture);
         try {
+            // 流尺寸:优先取注入 profile(与 injector 下发的宽高一致),回退到 Surface 输出能力。
+            Size streamSize = chooseStreamSize(camera.getId());
+            if (streamSize != null) {
+                texture.setDefaultBufferSize(streamSize.getWidth(), streamSize.getHeight());
+            }
+            applyPreviewRotation(streamSize);
             CaptureRequest.Builder request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             request.addTarget(surface);
             request.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO);
@@ -181,7 +215,8 @@ public final class MainActivity extends Activity implements TextureView.SurfaceT
                     try {
                         cameraSession = session;
                         session.setRepeatingRequest(request.build(), null, mainHandler);
-                        cameraStatus.setText("Camera: preview running; waiting for external frames");
+                        cameraStatus.setText("Camera: preview running; sensorOrientation="
+                                + sensorOrientationDegrees + "°; waiting for external frames");
                     } catch (Exception error) {
                         cameraStatus.setText("Camera: preview request failed: " + error.getMessage());
                     }
@@ -194,6 +229,81 @@ public final class MainActivity extends Activity implements TextureView.SurfaceT
         } catch (Exception error) {
             cameraStatus.setText("Camera: session failed: " + error.getMessage());
         }
+    }
+
+    private Size chooseStreamSize(String cameraId) {
+        try {
+            CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+            StreamConfigurationMap map = manager.getCameraCharacteristics(cameraId)
+                    .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            if (map == null) return null;
+            Size[] sizes = map.getOutputSizes(SurfaceTexture.class);
+            if (sizes == null || sizes.length == 0) return null;
+            // 按实际视图宽高比选择。sensorOrientation=90/270 时缓冲会被旋转后显示,
+            // 因此应按"旋转后的宽高比"评估:swap 传感器的有效宽高比 = h/w。
+            int viewWidth = preview.getWidth();
+            int viewHeight = preview.getHeight();
+            double targetAspect = (viewWidth > 0 && viewHeight > 0)
+                    ? (double) viewWidth / viewHeight : 9.0 / 16.0;
+            boolean swap = sensorOrientationDegrees == 90 || sensorOrientationDegrees == 270;
+            Size best = null;
+            double bestScore = Double.MAX_VALUE;
+            for (Size candidate : sizes) {
+                long pixels = (long) candidate.getWidth() * candidate.getHeight();
+                if (pixels > 1280L * 720L) continue;
+                double aspect = swap
+                        ? candidate.getHeight() / (double) candidate.getWidth()
+                        : candidate.getWidth() / (double) candidate.getHeight();
+                double score = Math.abs(aspect - targetAspect) - pixels / 1e9;
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = candidate;
+                }
+            }
+            return best;
+        } catch (Exception error) {
+            Log.w(TAG, "chooseStreamSize failed: " + error);
+            return null;
+        }
+    }
+
+    /**
+     * 传感器方向补偿(竖屏 Activity,显示旋转 0°):
+     * 显示时需将缓冲内容顺时针旋转 sensorOrientation 度(Camera2 规范),并等比 cover 填满视图。
+     *
+     * 关键语义:setTransform 的矩阵作用于"已被拉伸填满视图"的内容,矩阵处于视图坐标系。
+     * 因此所有平移/缩放都必须以视图尺寸为基准;cover 等比(基于缓冲区坐标)需除以
+     * 基础拉伸比(view/buffer)换算到视图坐标,得到非均匀的 sx/sy——对缓冲区内容而言
+     * 仍是等比 cover。
+     */
+    private void applyPreviewRotation(Size streamSize) {
+        int viewWidth = preview.getWidth();
+        int viewHeight = preview.getHeight();
+        Log.i(TAG, "applyPreviewRotation: sensorOrientation=" + sensorOrientationDegrees
+                + ", stream=" + streamSize + ", view=" + viewWidth + "x" + viewHeight);
+        if (streamSize == null || viewWidth == 0 || viewHeight == 0) {
+            preview.setTransform(null);
+            return;
+        }
+        float bufferWidth = streamSize.getWidth();
+        float bufferHeight = streamSize.getHeight();
+        boolean swap = sensorOrientationDegrees == 90 || sensorOrientationDegrees == 270;
+        // 旋转后映射到视图的宽高。
+        float mappedWidth = swap ? bufferHeight : bufferWidth;
+        float mappedHeight = swap ? bufferWidth : bufferHeight;
+        // cover 等比(缓冲区坐标系): 旋转后的缓冲铺满视图所需的最小等比。
+        float coverScale = Math.max(viewWidth / mappedWidth, viewHeight / mappedHeight);
+        // 换算到视图坐标(内容已被拉伸 view/buffer 倍):
+        float sx = coverScale * bufferWidth / viewWidth;
+        float sy = coverScale * bufferHeight / viewHeight;
+        Matrix matrix = new Matrix();
+        // 复合顺序(对点作用从右到左): 视图中心移到原点 → 非均匀缩放(抵消拉伸+cover)→
+        // 顺时针旋转 sensorOrientation → 回到视图中心。
+        matrix.setTranslate(viewWidth / 2f, viewHeight / 2f);
+        matrix.preRotate(sensorOrientationDegrees);
+        matrix.preScale(sx, sy);
+        matrix.preTranslate(-viewWidth / 2f, -viewHeight / 2f);
+        preview.setTransform(matrix);
     }
 
     private void startMicrophone() {

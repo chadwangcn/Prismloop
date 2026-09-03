@@ -16,7 +16,9 @@ from typing import Any, Callable, Mapping
 from .media_http import create_server
 from .media_async import AsyncMediaRunService
 from .media_config import MediaServiceSettings
+from .media_capture import CapturedMedia
 from .media_io import IterableVideoSource, RecordingExternalVideoAdapter, StreamProfile
+from .media_artifacts import FilesystemArtifactStore
 from .media_service import ArtifactStore, Capability, MemoryArtifactStore
 from .media_sources import ArtifactAudioSourceResolver, ArtifactVideoSourceResolver
 from .media_state import MediaRunStore
@@ -70,16 +72,59 @@ def build_pod_injector_service(
     request_timeout_seconds: float = 20.0,
     wait_sleep: Callable[[float], None] | None = time.sleep,
     ffmpeg_path: str = "ffmpeg",
+    capture_screenshot: Callable[[], bytes] | None = None,
 ) -> AsyncMediaRunService:
     """组装 Pod 裸数据注入路径的 MediaRun 服务(架构文档 11 §5.1)。
 
     前提(由调用方保证):Pod 内 injector APP 已运行、`adb forward` 已建立,
     ``push_fixture`` 能把本地目录放置到 Pod 文件系统。能力账本以 2026-08-31
-    PoC 实测为准。
+    PoC 实测为准;``capture_screenshot``(PodAdbSession.capture_screenshot)
+    提供 screen.image.capture 能力(adb screencap,冒烟 2026-09-02)。
     """
+
+    class _PodScreenCaptureAdapter:
+        """MediaCaptureAdapter:截图走 adb screencap;录屏/扬声器保持未验证。"""
+
+        def __init__(self, capture: Callable[[], bytes]) -> None:
+            self._capture = capture
+
+        def capture_screenshot(self):
+            return CapturedMedia(self._capture(), "image/png")
+
+        def start_screen_video(self) -> None:
+            raise RuntimeError("screen video capture is not verified for this adapter")
+
+        def stop_screen_video(self):
+            raise RuntimeError("screen video capture is not verified for this adapter")
+
+        def start_speaker_audio(self) -> None:
+            raise RuntimeError("speaker audio capture is not verified for this adapter")
+
+        def stop_speaker_audio(self):
+            raise RuntimeError("speaker audio capture is not verified for this adapter")
+
     client = PodInjectorClient(
         host=injector_host, port=injector_port, timeout_seconds=request_timeout_seconds
     )
+    capabilities = {
+        environment_ref: {
+            "camera.video.inject": Capability(
+                "camera.video.inject", "verified", "pod injector PoC 2026-08-31"
+            ),
+            "camera.continuous_stream_switch": Capability(
+                "camera.continuous_stream_switch", "verified", "pod injector PoC 2026-08-31"
+            ),
+            "microphone.pcm.inject": Capability(
+                "microphone.pcm.inject", "verified", "pod injector PoC 2026-08-31"
+            ),
+        }
+    }
+    capture_adapter = None
+    if capture_screenshot is not None:
+        capture_adapter = _PodScreenCaptureAdapter(capture_screenshot)
+        capabilities[environment_ref]["screen.image.capture"] = Capability(
+            "screen.image.capture", "verified", "adb screencap smoke 2026-09-02"
+        )
     return AsyncMediaRunService(
         store=MediaRunStore(state_db_path),
         artifact_store=artifact_store,
@@ -97,20 +142,9 @@ def build_pod_injector_service(
             push_fixture=push_fixture,
             remote_root=remote_root,
         ),
+        capture_adapter=capture_adapter,
         wait_sleep=wait_sleep,
-        capabilities={
-            environment_ref: {
-                "camera.video.inject": Capability(
-                    "camera.video.inject", "verified", "pod injector PoC 2026-08-31"
-                ),
-                "camera.continuous_stream_switch": Capability(
-                    "camera.continuous_stream_switch", "verified", "pod injector PoC 2026-08-31"
-                ),
-                "microphone.pcm.inject": Capability(
-                    "microphone.pcm.inject", "verified", "pod injector PoC 2026-08-31"
-                ),
-            }
-        },
+        capabilities=capabilities,
     )
 
 
@@ -148,10 +182,17 @@ def build_production_pod_service(
         refresh_seconds=adb_refresh_seconds,
         logger=logger or (lambda msg: print(f"[pod-adb] {msg}", flush=True)),
     )
+    # 本机部署形态:输入媒体经共享目录 data/artifacts 提供(调用方与本机共享文件系统,
+    # artifact_ref = artifact://local/prismloop-media/<相对路径>)。容器化后替换为 TOS。
+    artifact_root = os.environ.get("PRISMLOOP_ARTIFACT_ROOT", "data/artifacts")
+    artifact_store = FilesystemArtifactStore(
+        artifact_root, store_ref=os.environ.get("PRISMLOOP_ARTIFACT_STORE_REF", "local/prismloop-media")
+    )
     service = build_pod_injector_service(
         environment_ref=environment_ref or f"volc/pod/{pod_id}",
-        artifact_store=MemoryArtifactStore(),
+        artifact_store=artifact_store,
         push_fixture=session.push_fixture,
+        capture_screenshot=session.capture_screenshot,
         state_db_path=state_db_path,
         injector_port=injector_port,
         remote_root=remote_root,
