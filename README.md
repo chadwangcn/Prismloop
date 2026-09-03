@@ -32,6 +32,11 @@ Figma 设计稿 ──► Coding ──► Build ──► 云手机部署
 ## 目录结构
 
 ```
+cases/               APP 测试工程师维护的版本化业务 Case（与工具代码分离）
+  index.json          唯一 Case 发现入口
+  schema/             APP Case schema
+  suites/             smoke/regression/figma/media 等套件
+evidence/            证据与回执约定（不保存真实运行产物）
 src/                 Python harness 核心
   acep_client.py       火山引擎云手机 ACEP OpenAPI 封装
   media_run_service.py 媒体输入输出编排(12 种 action)
@@ -47,6 +52,12 @@ gateway-web/         Web SDK 注入网关(备选路径,非主线)
 architecture/        架构设计文档(01-11)
 tests/               单元测试
 ```
+
+Agent 岗位定义、工具使用 Skill 和 Workflow 由
+[`chadwangcn/OpenAgent`](https://github.com/chadwangcn/OpenAgent) 管理。本仓
+`AGENTS.md` 只定义 Prismloop 工具与 APP Case 的仓库边界。Paperclip APP 测试 Agent
+使用 `prismloop-app-testing` 和 `lumi-test-case-governance`；Prismloop 本身不负责业务
+Case 的通过/失败判断。
 
 ## 媒体注入链路(已验证)
 

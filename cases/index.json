@@ -1,0 +1,7 @@
+{
+  "schema_version": "prismloop.app-case-index.v1",
+  "case_schema": "cases/schema/app-case.schema.json",
+  "case_set_version": "0.1.0",
+  "discovery_rule": "listed_only",
+  "suites": []
+}

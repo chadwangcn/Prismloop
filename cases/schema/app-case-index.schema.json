@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prismloop.local/schemas/app-case-index.v1.json",
+  "title": "Prismloop APP Case Index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_schema", "case_set_version", "discovery_rule", "suites"],
+  "properties": {
+    "schema_version": {"const": "prismloop.app-case-index.v1"},
+    "case_schema": {"const": "cases/schema/app-case.schema.json"},
+    "case_set_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "discovery_rule": {"const": "listed_only"},
+    "suites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["suite_id", "case_files"],
+        "properties": {
+          "suite_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,63}$"},
+          "case_files": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^cases/suites/.+\\.json$"}
+          }
+        }
+      }
+    }
+  }
+}
+
