@@ -1,0 +1,46 @@
+media-injector/app/src/main/java/cn/prismloop/mediainjector/FrameFeeder.java
+  s_bbfdc7fd83ff43::t_572bc409c03d5b 104-107
+  s_bbfdc7fd83ff43::t_53f69cd8f8e306 162-167,171
+  s_bbfdc7fd83ff43::t_1b28140552b324 168-170,172-178
+  s_bbfdc7fd83ff43::t_e7b4a3732811a2 53
+scripts/demo_functional_test.sh
+  s_bbfdc7fd83ff43::t_09654bbe68d0a6 278
+  s_bbfdc7fd83ff43::t_8c634fa029e73f 1-85,94,97-99,101-179,182-225,228-268,271,293-323,327-358,365-374
+  s_bbfdc7fd83ff43::t_800a421d9da953 180-181
+  s_bbfdc7fd83ff43::t_0bb787b179432c 95-96,100
+  s_bbfdc7fd83ff43::t_e291c08b2a7a3a 324-326
+  s_bbfdc7fd83ff43::t_06bf9bcbccbbf9 269-270,272-274
+  s_bbfdc7fd83ff43::t_79d9371be2450e 226-227
+  s_bbfdc7fd83ff43::t_5e2347c9b1abd5 86-93
+  s_bbfdc7fd83ff43::t_c44970208d4f59 277,279-292
+  s_bbfdc7fd83ff43::t_1af996274677a0 359-364
+  s_bbfdc7fd83ff43::t_e4579a0bc22800 275-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "7499ca77afe11cf0735311483757d1a3da88105d",
+  "prompts": {},
+  "sessions": {
+    "s_bbfdc7fd83ff43": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a7495f84687ba1cea3b23cd",
+        "model": "glm-5.3__dev"
+      },
+      "human_author": "Hydra Automation <bot@hydrageek.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a996dcb638a70e903fa865f",
+        "tool_name": "Edit",
+        "edit_kind": "file_edit",
+        "runtime_client": "trae-tob-git-ai",
+        "client_type": "ide",
+        "source_scene": "agent",
+        "operation_id": "6a996dcb638a70e903fa865f",
+        "display_model_name": "GLM-5.3",
+        "session_id": "6a7495f84687ba1cea3b23cd",
+        "external_session_id": "6a7495f84687ba1cea3b23cd"
+      }
+    }
+  }
+}
